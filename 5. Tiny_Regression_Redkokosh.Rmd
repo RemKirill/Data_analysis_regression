@@ -1,0 +1,73 @@
+---
+title: "Regression_Redkokosh"
+author: "Redkokosh Kirill"
+date: "5/23/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Подключим библиотеку и прочитаем набор данных.
+
+```{r}
+library(ISLR2)
+data <- Auto
+head(data)
+```
+
+Вывели первые шесть строк, однако для дальнейшего анализа нам понадобится только horsepower и mpg.
+
+(a) Use the lm() function to perform a simple linear regression with mpg as the response and horsepower as the predictor:
+
+```{r}
+lm.res <- lm(mpg ~ horsepower, data = data)
+```
+
+В lm.res записали результат применения линейной регрессии.
+
+Use the summary() function to print the results:
+
+```{r}
+summary(lm.res)
+confint(lm.res)
+predict(lm.res, data.frame(horsepower = 98), interval = "confidence")
+predict(lm.res, data.frame(horsepower = 98), interval = "prediction")
+```
+
+i. p-value F-statistic меньше стандартных уровней значимости, значит между horsepower и mpg есть связь. Так же довереительный интервал для horsepower не включает 0, что является еще одним подтверждением наличия связи.
+
+ii. Коэффициент R2 $\approx$ 0.6, то есть около 60% дисперсии объясняется предиктором.
+
+iii. Коэффициент в модели перед horsepower $\approx$ -0.16, поэтому чем больше horsepower, тем меньше mpg (связь отрицательная).
+
+iv. Прогноз для horsepower = 98: прогнозируемое значение-- 24.47, при этом доверительный 95%-интервал (23.97, 24.96), предсказательный (14.81, 34.12).
+
+(b) Plot the response and the predictor. Use the abline() function to display the least squares regression line:
+
+```{r, include=FALSE}
+horsepower <- data$horsepower
+mpg <- data$mpg
+```
+
+```{r}
+plot(horsepower, mpg)
+abline(lm.res)
+```
+
+Предположим, что между horsepower и mpg зависимость нелинейная
+
+(c) Use the plot() function to produce diagnostic plots of the least squares regression fit:
+
+```{r}
+par(mfrow = c(2, 2))
+plot(lm.res)
+par(mfrow = c(2, 1))
+plot(predict(lm.res), residuals(lm.res))
+plot(predict(lm.res), rstudent(lm.res))
+par(mfrow = c(1, 1))
+plot(hatvalues(lm.res))
+```
+
+Видим подтвержение предположения о нелинейности зависимости, а также outliers (однако так как модель неверна-- зависимость нелинейная, то удаление таких outliers скорее будет подгонкой под модель)

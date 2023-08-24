@@ -1,0 +1,134 @@
+---
+title: "Trees_Redkokosh"
+author: "Redkokosh Kirill"
+date: "5/23/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Прочитаем набор данных.
+
+```{r, include=FALSE}
+library(ISLR2)
+library(dplyr)
+library(ggplot2)
+library(GGally)
+library(ggpubr)
+library(caTools)
+library(tree)
+library(Metrics)
+library(randomForest)
+library(BART)
+set.seed(100)
+```
+
+```{r}
+data <- Carseats
+head(data)
+```
+
+Вывели первые шесть строк.
+
+(a) Split the data set into a training set and a test set:
+
+```{r}
+split <- sample.split(data$US, SplitRatio = 0.8)
+dataTrain <- subset(data, split == "TRUE")
+dataTest <- subset(data, split == "FALSE")
+```
+
+(b) Fit a regression tree to the training set. Plot the tree, and interpret the results. What test MSE do you obtain:
+
+```{r}
+tree.carseats <- tree(Sales ~ . , dataTrain)
+summary(tree.carseats)
+plot(tree.carseats)
+text(tree.carseats, cex = 0.7)
+tree.pred <- predict(tree.carseats, dataTest)
+mse(tree.pred, dataTest$Sales)
+```
+
+Были использованы переменные ShelveLoc, Price, Age, Income, CompPrice и Advertising. При этом деление на первом этапе происходит по переменной ShelveLoc, то есть признак "расположение" является наиболее значимым, после чего на обеих ветвях деление происходит по признаку "цена", так же значимый признак. MSE = 5.12 для тестовых данных.
+
+(c) Use cross-validation in order to determine the optimal level of tree complexity. Does pruning the tree improve the test MSE:
+
+```{r}
+cv.carseats <- cv.tree(tree.carseats, FUN = prune.tree)
+cv.carseats
+par(mfrow = c(1, 2))
+plot(cv.carseats$size, cv.carseats$dev, type = "b")
+plot(cv.carseats$k, cv.carseats$dev, type = "b")
+```
+
+После размера дерева = 4 ошибка уменьшается намного медленнее, построим дерево c 4 конечными вершинами (листьями).
+
+```{r}
+prune.carseats <- prune.tree(tree.carseats, best = 4) 
+plot(prune.carseats)
+text(prune.carseats, cex = 0.7)
+tree.pred <- predict(prune.carseats, dataTest)
+mse(tree.pred, dataTest$Sales)
+```
+
+На первом этапе происходит по переменной ShelveLoc, то есть расположение является наиболее значимым признаком, после чего на обеих ветвях деление происходит по признаку "цена". MSE = 4.69, меньше, чем в  исходном варианте.
+
+(d) Use the bagging approach in order to analyze this data. What test MSE do you obtain:
+
+```{r}
+bag.carseats <- randomForest(Sales ~ ., data = dataTrain, mtry = 10, importance = TRUE)
+yhat.bag <- predict(bag.carseats, newdata = dataTest)
+plot(yhat.bag, dataTest$Sales)
+abline(0, 1)
+mse(yhat.bag, dataTest$Sales)
+varImpPlot(bag.carseats)
+```
+
+Наиболее важными переменными являются ShelveLoc и Price, что уже было отмечено и ранее.
+
+MSE = 2.2, более чем в 2 раза уменьшилось по сравнению с optimally-pruned деревом.
+
+(e) Use random forests to analyze this data. What test MSE do you obtain:
+
+```{r}
+bag.carseats <- randomForest(Sales ~ ., data = dataTrain, mtry = 10, importance = TRUE, ntree = 250)
+yhat.bag <- predict(bag.carseats, newdata = dataTest)
+mse(yhat.bag, dataTest$Sales)
+varImpPlot(bag.carseats)
+bag.carseats <- randomForest(Sales ~ ., data = dataTrain, mtry = 4, importance = TRUE, ntree = 250)
+yhat.bag <- predict(bag.carseats, newdata = dataTest)
+mse(yhat.bag, dataTest$Sales)
+varImpPlot(bag.carseats)
+```
+
+В обоих случаях наиболее важными переменными являются ShelveLoc и Price, что уже было отмечено и ранее.
+
+При использовании всех признаков MSE = 2.08. Результат лучше, чем при bagging.
+
+При использовании 4 признаков MSE = 2.34 (рекомендация для деревьев регрессии $\frac p3$).
+
+Возможно количество признаков недостаточно для применения этой рекомендации.
+
+То есть в данном случае стоит попробовать увеличить количество используемых признаков.
+
+```{r}
+bag.carseats <- randomForest(Sales ~ ., data = dataTrain, mtry = 7, importance = TRUE, ntree = 250)
+yhat.bag <- predict(bag.carseats, newdata = dataTest)
+mse(yhat.bag, dataTest$Sales)
+```
+
+Попробовав различное количество признаков результата лучше, чем при использовании всех признаков получить не удалось.
+
+(f) Now analyze the data using BART, and report your results:
+
+```{r}
+bartfit <- gbart(dataTrain[, 2:11], dataTrain$Sales, x.test = dataTest[, 2:11])
+yhat.bart <- bartfit$yhat.test.mean
+mse(yhat.bart, dataTest$Sales)
+ord <- order(bartfit$varcount.mean, decreasing = TRUE) 
+bartfit$varcount.mean[ord]
+```
+
+MSE=1.18 лучший из результатов. Самая часто встречаемая переменная-- Price.

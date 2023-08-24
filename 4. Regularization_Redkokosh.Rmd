@@ -1,0 +1,135 @@
+---
+title: "Regularization_Redkokosh"
+author: "Redkokosh Kirill"
+date: "5/23/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+library(ISLR2)
+library(dplyr)
+library(ggplot2)
+library(GGally)
+library(ggpubr)
+library(caTools)
+library(leaps)
+library(Metrics)
+set.seed(2007)
+```
+
+(a) Generate a data set with p = 20 features, n = 1000 observations, and an associated quantitative response vector generated according to the model $Y=X\beta+\epsilon$:
+
+```{r}
+mean <- rnorm(20, mean = 0, sd = 0.9)
+mean
+data <- data.frame(rnorm(n = 1000, mean = mean[1], sd = 1))
+for (i in 2:20){
+  data <- cbind(data, rnorm(n = 1000, mean = mean[i], sd = 1))
+}
+beta <- rnorm(20, mean = 0, sd = 1)
+min10 <- quantile(beta, probs = 0.1)
+max5 <- quantile(beta, probs = 0.95)
+beta[beta > max5 | beta < min10] <- 0
+Xbeta <- as.matrix(data, 1000, 20)%*%beta + rnorm(n = 1000, mean = mean, sd = 0.1)
+data <- cbind(data, Xbeta)
+data <- setNames(data, c(paste0('X', 1:20), 'Y'))
+head(data)
+```
+
+По условию некоторые $\beta$ должны быть точно нули, заменили два минимальных и одно максимальное элементы $\beta$ вектора на нули.
+
+(b) Split your data set into a training set containing 100 observations and a test set containing 900 observations:
+
+```{r}
+split <- sample.split(data$Y, SplitRatio = 0.9)
+dataTrain <- subset(data, split == "TRUE")
+dataTest <- subset(data, split == "FALSE")
+```
+
+(c) Perform best subset selection on the training set, and plot the training set MSE associated with the best model of each size:
+
+```{r}
+regfit.best <- regsubsets(Y ~ ., dataTrain, nvmax = 20)
+reg.summary <- summary(regfit.best)
+reg.summary$rsq
+maxadj2 <- which.max(reg.summary$adjr2)
+par(mfrow = c(2, 2))
+plot(reg.summary$rss, xlab = "Number of Variables", ylab = "RSS", type = "l")
+plot(reg.summary$adjr2, xlab = "Number of Variables", ylab = "Adjusted RSq", type = "l")
+points(maxadj2, reg.summary$adjr2[maxadj2], col = "red", cex = 2, pch = 20)
+plot(reg.summary$cp, xlab = "Number of Variables", ylab = "Cp", type = "l")
+mincp <- which.min(reg.summary$cp)
+points(mincp, reg.summary$cp[mincp], col = "red", cex = 2, pch = 20)
+minbic <- which.min(reg.summary$bic)
+plot(reg.summary$bic, xlab = "Number of Variables", ylab = "BIC", type = "l")
+points(minbic, reg.summary$bic[minbic], col = "red", cex = 2, pch = 20)
+val.errors <- rep(NA, 20) 
+test.mat <- model.matrix(Y ~ ., data = dataTrain)
+for (i in 1:20) {
+  coefi <- coef(regfit.best, id = i)
+  pred <- test.mat[, names(coefi)] %*% coefi 
+  val.errors[i] <- mse(dataTrain$Y, pred)
+}
+val.errors
+par(mfrow = c(1, 1))
+plot(val.errors, xlab = "Number of Variables", ylab = "MSE", type = "l")
+which.min(val.errors)
+```
+
+R2 увеличивается с 0.33 при включении одной переменной до 0.95 при включении всех переменных, при этом примерно начиная с 12 переменных R2 почти не увеличивается. Рассматривая BIC стоит взять 15 переменных, $C_p$-- 17, AdjustedR2-- 18, MSE-- 20.
+
+(d) Plot the test set MSE associated with the best model of each size:
+
+```{r}
+val.errors <- rep(NA, 20) 
+test.mat <- model.matrix(Y ~ ., data = dataTest)
+for (i in 1:20) {
+  coefi <- coef(regfit.best, id = i)
+  pred <- test.mat[, names(coefi)] %*% coefi 
+  val.errors[i] <- mse(dataTest$Y, pred)
+}
+val.errors
+plot(val.errors, xlab = "Number of Variables", ylab = "MSE", type = "l")
+```
+
+(e) For which model size does the test set MSE take on its minimum value:
+
+```{r}
+which.min(val.errors)
+```
+
+Минимальное MSE для модели из 14 признаков (пришлось менять генерацию, так как до этого минимум достигался при использовании всех 20 признаков).
+
+(f) How does the model at which the test set MSE is minimized compare to the true model used to generate the data:
+
+```{r}
+beta
+coef(regfit.best, which.min(val.errors))
+```
+
+В модель не были взяты признаки соответствующие нулевым элементам $\beta$, а также признаки 7, 12 и 13, которые также близки к нулю. Коэффициенты из модели близки к соответствующим значениям из вектора $\beta$.
+
+(e) Create a plot displaying $\sqrt{\sum_{j=1}^p(\beta_j-\hat\beta^r_j)^2}$ for a range of values of $r$, where $\hat\beta^r_j$ is the $j$-th coefficient estimate for the best model containing $r$ coefficients.
+
+```{r, include=FALSE}
+beta <- data.frame(matrix(beta, 1))
+```
+
+```{r}
+res <- vector()
+for (i in 1:20){
+  r.best <- coef(regfit.best, i)
+  t <- 0 
+  for (j in 2:(i+1)){
+    t <- t + (r.best[j]-beta[[names(r.best)[j]]])^2
+  }
+  res <- append(res, sqrt(t))
+}
+plot(res, t = 'l')
+```
+
+Полученный график имеет два локальных минимума в 8 и в 14, в тех же точках, что и на графике MSE, но при этом на этом графике минимум достигается при 8 признаках, а на графике MSE на 14 признаках.

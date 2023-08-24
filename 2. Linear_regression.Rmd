@@ -1,0 +1,214 @@
+---
+title: "Task4"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+df <- read.csv("winequality-red.csv", header = TRUE, as.is = FALSE)
+head(df)
+```
+
+### Кoрoтко о данных
+
+Это данные о физико-химических свойствах вина, например, о кислотности, содержании диоксида серы, сульфатов и тд, а также качество вина (измеряемое баллами от 0 до 10).
+
+1 - фиксированная кислотность
+
+2 - летучая кислотность
+
+3 - лимонная кислота
+
+4 - остаточный сахар
+
+5 - хлориды
+
+6 - свободный диоксид серы
+
+7 - общий диоксид серы
+
+8 - плотность
+
+9 - рН
+
+10 - сульфаты
+
+11 - алкоголь
+
+## Первичный анализ данных
+
+### Описательная статистика
+
+```{r}
+summary(df)
+```
+
+Удалим из рассмотрения free.sulfur.dioxide, так как есть total.sulfur.dioxide и удалим citric.acid, так как есть fixed.acidity.
+
+```{r}
+df <- df[-3]
+df <- df[-5]
+```
+
+### Виды признаков
+
+Таблица внизу показывает, какую моду имеют наши количественные признаки. Отсюда можно сделать вывод о том, являются они непрерывными или нет.
+Построим matrix plot для того, чтобы увидеть особенности в наших данных.
+
+```{r}
+library(lattice)
+library(ggplot2)
+library('GGally')
+ggpairs(df, title="correlogram", columns=c(1:9), upper = list(continuous = "points"), diag = list(continuous = "barDiag"))
+```
+
+Прологарифмируем 1, 3, 4, 5, 8, 9. 
+
+```{r}
+dfl <- transform(df, fixed.acidity=log(fixed.acidity), residual.sugar=log(residual.sugar), chlorides=log(chlorides), total.sulfur.dioxide=log(total.sulfur.dioxide), sulphates=log(sulphates), alcohol=log(alcohol))
+ggpairs(dfl, title="correlogram", columns=c(1:9), upper = list(continuous = "points"), diag = list(continuous = "barDiag"))
+```
+
+Удалим единичные outliers.
+
+```{r}
+dflo <- dfl
+dflo[rownames(dflo)[dflo$volatile.acidity > 1.5 | dflo$chlorides < -4 | dflo$total.sulfur.dioxide > 5.1 | dflo$alcohol > 2.7],] <- NA
+ggpairs(na.omit(dflo), title="correlogram", columns=c(1:9), upper = list(continuous = "points"), diag = list(continuous = "barDiag"))
+names(dflo)[names(dflo) == 'fixed.acidity'] <- 'log_fixed.acidity'
+names(dflo)[names(dflo) == 'residual.sugar'] <- 'log_residual.sugar'
+names(dflo)[names(dflo) == 'chlorides'] <- 'log_chlorides'
+names(dflo)[names(dflo) == 'total.sulfur.dioxide'] <- 'log_total.sulfur.dioxide'
+names(dflo)[names(dflo) == 'sulphates'] <- 'log_sulphates'
+names(dflo)[names(dflo) == 'alcohol'] <- 'log_alcohol'
+```
+
+Нормальность данных:
+
+```{r}
+library(ggpubr)
+ggqqplot(dflo$log_fixed.acidity, ylab = "log_fixed.acidity")
+
+ggqqplot(dflo$volatile.acidity, ylab = "volatile.acidity")
+
+ggqqplot(dflo$log_residual.sugar, ylab = "log_residual.sugar")
+
+ggqqplot(dflo$log_chlorides, ylab = "log_chlorides")
+
+ggqqplot(dflo$log_total.sulfur.dioxide, ylab = "log_total.sulfur.dioxide")
+
+ggqqplot(dflo$density, ylab = "density")
+
+ggqqplot(dflo$pH, ylab = "pH")
+
+ggqqplot(dflo$log_sulphates, ylab = "log_sulphates")
+
+ggqqplot(dflo$log_alcohol, ylab = "log_alcohol")
+
+shapiro.test(dflo$log_fixed.acidity)
+shapiro.test(dflo$volatile.acidity)
+shapiro.test(dflo$log_residual.sugar)
+shapiro.test(dflo$log_chlorides)
+shapiro.test(dflo$log_total.sulfur.dioxide)
+shapiro.test(dflo$density)
+shapiro.test(dflo$pH)
+shapiro.test(dflo$log_sulphates)
+shapiro.test(dflo$log_alcohol)
+```
+
+Нормальность отсутсвует :(     Но объем выборки позволяет говорить об асимптотической сходимости методов.
+
+Посмотрим на корреляцию между признаками.
+
+```{r}
+library(ggcorrplot)
+library(ppcor)
+dflo <- na.omit(dflo)
+corr <- round(cor(dflo[c(1:9)]), 1)
+ggcorrplot(corr, method = "circle", lab = TRUE)
+ggcorrplot(pcor(dflo[c(1:9)])$estimate, method = "circle", lab = TRUE)
+```
+
+Сильная зависимость наблюдается между log_fixed.acidity и density, а также log_fixed.acidity и pH.
+
+```{r}
+library(lm.beta)
+lm.df.oecd <- lm.beta(lm(data = dflo, quality ~ log_fixed.acidity + volatile.acidity + log_residual.sugar + log_chlorides + log_total.sulfur.dioxide + density + pH + log_sulphates + log_alcohol))
+summary(lm.df.oecd)
+```
+
+Значимыми являются с ***. согласно модели quality будет больше при меньшем значении 4 признаков (volatile.acidity, log_chlorides, log_total.sulfur.dioxide, density; максимальный по модулю-- volatile.acidity) и большем значении 3 (log_sulphates, log_alcoho, log_fixed.acidityl; максимальный по модулю-- log_alcohol). Остальные коэффицинты 
+
+##### AIC: Выбор модели для линейной регрессии
+
+Также выбор модели можно осуществлять на основании информационных критериев, которые базируются на функции максимального правдоподобия для оценок параметров и учитывают число параметров.
+
+В случае функции `stepAIC`, AIC вычисляется по формуле $$\text{AIC} = 2k - 2 \log \mathcal L$$, где $k$ — число параметров модели, $\mathcal L$ — функция максимального правдоподобия для модели.
+
+"Backward" алгоритм `stepAIC` будет убирать переменные по одной, пока не будет достигнут минимум функции AIC.
+
+```{r}
+lm.df.oecd.full <- lm.beta(lm(data = dflo, quality ~ log_fixed.acidity + volatile.acidity + log_residual.sugar + log_chlorides + log_total.sulfur.dioxide + density + pH + log_sulphates + log_alcohol))
+stepAIC(lm.df.oecd.full, direction = "backward")
+```
+
+Информационный критерий AIC убирает всего 1 предикатор-- pH.
+
+Удалим признак log_fixed.acidity (большая корреляция со многими признаками) и построим модель линейной регрессии ещё раз.
+
+```{r}
+corr <- round(cor(dflo[c(2:9)]), 1)
+ggcorrplot(corr, method = "circle", lab = TRUE)
+ggcorrplot(pcor(dflo[c(2:9)])$estimate, method = "circle", lab = TRUE)
+```
+
+Теперь не наблюдается сильных корреляций (как обычных, так и частных) между признаками.
+
+```{r}
+lm.df.oecd.full <- lm.beta(lm(data = dflo[c(2:10)], quality ~ volatile.acidity + log_residual.sugar + log_chlorides + log_total.sulfur.dioxide + density + pH + log_sulphates + log_alcohol))
+stepAIC(lm.df.oecd.full, direction = "backward")
+```
+
+Информационный критерий AIC убирает 2 предикатора-- density и log_residual.sugar.
+
+Построим модель с использование минимального количества предикаторов.
+
+```{r}
+lm.df.oecd <- lm.beta(lm(data = dflo[c(2:10)], quality ~ volatile.acidity + log_chlorides + log_total.sulfur.dioxide + pH + log_sulphates + log_alcohol))
+summary(lm.df.oecd)
+```
+
+Все коэффициенты регрессии значимы (***), согласно модели quality будет больше при меньшем значении первых 4 признаков (volatile.acidity, log_chlorides, log_total.sulfur.dioxide, pH; максимальный по модулю-- volatile.acidity) и большем значении 2 оставшихся (log_sulphates, log_alcohol; максимальный по модулю-- log_alcohol).
+
+Анализ остатков:
+
+```{r}
+library(MASS)
+library(car)
+par(mfrow = c(2, 2))
+plot(lm.df.oecd, 2) #Normal Q-Q
+plot(lm.df.oecd, 4) #Cook`s distance
+r <- stdres(lm.df.oecd)
+jackknife.res <- studres(lm.df.oecd) #Residuals vs Deleted
+plot(jackknife.res ~ r, main = "Residuals vs Deleted") + abline(coef = c(0,1))
+```
+
+Outliers не выявлено (значения Cook`s distance не превосходит 0.05, на графике "Residuals vs Deleted" все точки лежат на прямой y=x), остатки распределены нормально, значит построенная модель хорошо описывает зависимость.
+
+Спрогнозируем значение quality для 2 индивидов с использованием построенной модели линейной регрессии. Первый индивид будет обладать значениями признаков близкими к средним, второй соответствует близким к "идеальным" значениям признаков (для данной модели).
+
+```{r}
+new_wine <- data.frame(volatile.acidity = 0.52, log_chlorides = log(0.08), log_total.sulfur.dioxide = log(46), pH = 3.311, log_sulphates = log(0.65), log_alcohol = log(10.42))
+new_wine2 <- data.frame(volatile.acidity = 0.015, log_chlorides = log(0.015), log_total.sulfur.dioxide = log(10), pH = 3, log_sulphates = log(2), log_alcohol = log(14))
+  
+predict.lm(lm.df.oecd, new_wine, interval = "confidence")
+predict.lm(lm.df.oecd, new_wine, interval = "prediction")
+
+predict.lm(lm.df.oecd, new_wine2, interval = "confidence")
+predict.lm(lm.df.oecd, new_wine2, interval = "prediction")
+```
+
+Как и ожидалось первый индивид получил оценку quality близкую к средней по выборке. А второй получил оценку и вовсе больше максимального по выборке (уж сильно "идеальными" характеристиками он обладает).
